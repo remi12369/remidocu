@@ -1,0 +1,94 @@
+# Scriptnaam: ProcesCheck Sjabloon.txt
+# Functie :  Check processen van een server tegen een whitelist
+# Auteur : Stichting Praktijkleren, BvdF
+# Versie :  0.5 
+# Datum : 23 December 2021
+#
+# Argumenten [minuten-numerieke string [servernaam-alfanumerieke string]]
+#
+# De comments die beginnen en eindigen met *** zijn aanwijzingen voor jouw opdracht.
+#
+$minuten = 1;                 # Zetten van default waarden
+$server = "localhost";
+$whiteListFile = $home + '\MonTool\Whitelist.txt';
+$signaleringenFile = $home + '\MonTool\Signaleringen.txt';
+
+# *** zorg dat als het aantal minuten wordt meegegeven bij de start deze de default waarde vervangt
+# *** zorg dat als een servernaam wordt meegegeven bij de start dat die de default waarde overschrijft
+
+# Check if the whitelist and signaleringen files exist
+If (!(Test-Path $whiteListFile) -Or !(Test-Path $signaleringenFile)) {
+	Write-Host "One or both of the required files do not exist. Please check the file paths and try again."
+	Return 
+}
+
+# Lege signaleringenfile maken
+Set-Content -path $signaleringenFile -value $server, $datum;
+
+# Whitelist inlezen in een array
+[string[]]$arrayMetWhiteList = Get-Content -Path $whiteListFile
+$periode = New-timespan -minutes $minuten;    # bereid de tijdsinterval voor
+$startTijd = Get-Date;
+$stopTijd = (Get-Date) + $periode;
+
+Write-Host "'nProcesChecker is gestart om", $startTijd, "op server", $server, "voor een periode van", $minuten;
+Set-Content -path $signaleringenFile -value $server, $datum;      # maak lege signaleringenfile
+[string[]]$arrayMetWhiteList = Get-Content -Path $whiteListFile     # lees de whitelist in een arrayMetWhiteList
+
+# *** BEGIN - Zorg dat de onderstaande acties herhaald worden tot het $minuten is verstreken ***
+[string[]]$arrayMetProcessen = invoke-command -Computer $server {Get-Process | Select-Object -ExpandProperty ProcessName }
+Foreach ($ProcessName in $arrayMetProcessen) { 
+	If (-Not ($arrayMetWhiteList -Match $processName)) {     # proces in de Whitelist?
+	$answer = Read-Host -Prompt "Proces", $processName, "is onbekend, toevoegen aan Whitelist (y/n) ?"
+	While (($answer -ne "y") -And ($answer -ne "n")) {
+		$answer = Read-Host -prompt "Keuze (y/n)";
+	}
+	If ($answer -Eq 'y') {                        # procesnaam toevoegen aan whitelist
+	$arrayMetWhiteList += $processName;
+	}
+	Else {                                        # procesnaam toevoegen aan signaleringen
+	Add-Content -Path $signaleringenFile -Value $processName
+	}
+	}
+} 
+
+# *** Zorg dat ik iets op het scherm zie bewegen gedurende de 5 seconden tussen de herhalingen ***
+Wait-Event -TimeOut 5        # heartbeat, wachtperiode tussen de herhalingen in   
+
+# *** EIND - tot hier herhalen gedurende de $minuten ***
+
+# Nu komen de afsluitende acties, whitelist naar bestand zetten en signaleringen printen
+
+# *** vraag of de whitelist leeg gemaakt moet worden, accepteer alleen y en n ***
+# *** als de whitelist leeg moet schrijf een lege whitelist weg, anders de huidige ***
+$arrayMetWhiteList | Out-File $whiteListFile;
+
+# *** vraag of de signaleringen op het scherm moeten komen, accepteer y om te printen, iets anders zie je als n ***
+# *** indien y: druk de signaleringen netjes af op het scherm ***
+
+$showSignaleringen = Read-Host -Prompt "Signaleringen weergeven(y/n)?";
+While (($showSignaleringen -ne "y") -And ($showSignaleringen -ne "n")) {
+	$showSignaleringen = Read-Host -Prompt "Keuze (y/n)?";
+}
+
+If ($showSignaleringen -Eq 'y') {
+	
+	# print de signaleringen naar het scherm
+	Write-Host "`n`n========================`nSignaleringen van", $startTijd, "tot", $stopTijd;
+	Get-Content -Path $signaleringenfile | Write-Host
+}
+
+# Lees de signaleringen in uit het bestand 
+$signaleringen = Get-Content $signaleringenfile
+
+# Druk elke signalering af op het scherm
+$signaleringen | ForEach-Object {
+	Write-Host " - $_ "
+
+}
+
+# Maak een variabele met de huidige datum/tijd
+$endTime = Get-Date
+
+# *** voeg de einddatum/tijd toe aan de afsluitende boodschap 
+Write-Host "=========================`nProcesChecker is beeindigd om ", $endTime
